@@ -1,0 +1,7 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: apuguard-backend
+    ports:
+      - "8000:8000"
