@@ -1,14 +1,33 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.database.database import get_db
+
 
 app = FastAPI(
-    title="ApuGuard AI",
-    version="0.1.0"
+    title=settings.app_name,
+    version=settings.app_version,
 )
 
-@app.get("/")
-def root():
+
+@app.get("/", tags=["System"])
+def root() -> dict[str, str]:
     return {
-        "name": "ApuGuard AI",
+        "name": settings.app_name,
         "status": "running",
-        "version": "0.1.0"
+        "version": settings.app_version,
+    }
+
+
+@app.get("/health/database", tags=["Health"])
+def database_health(
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    db.execute(text("SELECT 1"))
+
+    return {
+        "database": "postgresql",
+        "status": "connected",
     }
