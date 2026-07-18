@@ -13,6 +13,6 @@ router = APIRouter(
 def root() -> dict[str, str]:
     return {
         "name": settings.app_name,
-        "status": "development",
+        "status": "running",
         "version": settings.app_version,
     }
