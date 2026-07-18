@@ -1,11 +1,11 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+from fastapi import FastAPI
 
+from app.api.routes.health import router as health_router
+from app.api.routes.system import router as system_router
 from app.core.config import settings
-from app.database.database import Base, engine, get_db
+from app.database.database import Base, engine
 from app.models import User  # noqa: F401
 
 
@@ -18,26 +18,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
+    description=(
+        "Plataforma autónoma de pentesting inteligente y generación "
+        "de reportes de vulnerabilidades basada en OWASP Top 10."
+    ),
     lifespan=lifespan,
 )
 
 
-@app.get("/", tags=["System"])
-def root() -> dict[str, str]:
-    return {
-        "name": settings.app_name,
-        "status": "running",
-        "version": settings.app_version,
-    }
-
-
-@app.get("/health/database", tags=["Health"])
-def database_health(
-    db: Session = Depends(get_db),
-) -> dict[str, str]:
-    db.execute(text("SELECT 1"))
-
-    return {
-        "database": "postgresql",
-        "status": "connected",
-    }
+app.include_router(system_router)
+app.include_router(health_router)
