@@ -7,6 +7,7 @@ from app.api.routes.system import router as system_router
 from app.core.config import settings
 from app.database.database import Base, engine
 from app.models import User  # noqa: F401
+from app.api.routes.auth import router as auth_router
 
 
 @asynccontextmanager
@@ -28,3 +29,4 @@ app = FastAPI(
 
 app.include_router(system_router)
 app.include_router(health_router)
+app.include_router(auth_router)
