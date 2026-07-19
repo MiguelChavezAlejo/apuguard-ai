@@ -7,3 +7,5 @@ bcrypt
 PyJWT
 python-multipart
 email-validator
+httpx
+reportlab

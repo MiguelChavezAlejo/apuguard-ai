@@ -22,6 +22,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - apuguard-network
 
   db:
     image: postgres:17-alpine
@@ -44,6 +46,45 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - apuguard-network
+
+  juice-shop:
+    image: bkimminich/juice-shop:latest
+    container_name: apuguard-juice-shop
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    networks:
+      - apuguard-network
+
+  zap:
+    image: zaproxy/zap-stable:latest
+    container_name: apuguard-zap
+    restart: unless-stopped
+    command:
+      - zap.sh
+      - -daemon
+      - -host
+      - 0.0.0.0
+      - -port
+      - "8080"
+      - -config
+      - api.disablekey=true
+      - -config
+      - "api.addrs.addr.name=.*"
+      - -config
+      - api.addrs.addr.regex=true
+    ports:
+      - "8080:8080"
+    depends_on:
+      - juice-shop
+    networks:
+      - apuguard-network
 
 volumes:
   apuguard_postgres_data:
+
+networks:
+  apuguard-network:
+    driver: bridge

@@ -13,6 +13,15 @@ def get_user_by_email(
     return db.scalar(statement)
 
 
+def get_user_by_id(
+    db: Session,
+    user_id: int,
+) -> User | None:
+    statement = select(User).where(User.id == user_id)
+
+    return db.scalar(statement)
+
+
 def create_user(
     db: Session,
     *,
@@ -28,6 +37,17 @@ def create_user(
         role=role,
     )
 
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return user
+
+
+def save_user(
+    db: Session,
+    user: User,
+) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
