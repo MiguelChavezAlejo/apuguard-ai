@@ -5,7 +5,7 @@ from app.services.zap_service import ZapService
 from app.services.scan_service import ScanService
 from app.services.report_service import ReportService
 from app.services.pdf_service import PdfService
-
+from app.services.admin_service import AdminService
 
 __all__ = [
     "authenticate_user",

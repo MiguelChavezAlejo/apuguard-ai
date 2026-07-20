@@ -38,8 +38,14 @@ function App() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const [currentUser, setCurrentUser] = useState(null);
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [adminProjects, setAdminProjects] = useState([]);
+  const [adminSection, setAdminSection] = useState("users");
+
   useEffect(() => {
     if (token) {
+      loadCurrentUser();
       loadProjects();
     }
   }, [token]);
@@ -50,11 +56,40 @@ function App() {
   };
 
   const getErrorMessage = (exception) => {
-    return (
-      exception.response?.data?.detail ||
-      exception.message ||
-      "Ocurrió un error inesperado."
-    );
+    const detail = exception.response?.data?.detail;
+
+    if (Array.isArray(detail)) {
+      return detail
+        .map((item) => item?.msg)
+        .filter(Boolean)
+        .join(". ");
+    }
+
+    if (typeof detail === "string") {
+      return detail;
+    }
+
+    if (detail && typeof detail === "object") {
+      return detail.msg || "Ocurrió un error inesperado.";
+    }
+
+    return exception.message || "Ocurrió un error inesperado.";
+  };
+
+  const loadCurrentUser = async () => {
+    try {
+      const response = await api.get("/auth/me");
+      setCurrentUser(response.data);
+
+      return response.data;
+    } catch (exception) {
+      localStorage.removeItem("apuguard_token");
+      setToken(null);
+      setCurrentUser(null);
+      setCurrentView("login");
+
+      throw exception;
+    }
   };
 
   const login = async (event) => {
@@ -91,6 +126,16 @@ function App() {
   const register = async (event) => {
     event.preventDefault();
     clearFeedback();
+
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{10,72}$/;
+
+    if (!passwordRegex.test(registerForm.password)) {
+      setError(
+        "La contraseña debe tener entre 10 y 72 caracteres, una mayúscula, una minúscula, un número y un símbolo."
+      );
+      return;
+    }
 
     if (registerForm.password !== registerForm.confirm_password) {
       setError("Las contraseñas no coinciden.");
@@ -134,13 +179,128 @@ function App() {
   const logout = () => {
     localStorage.removeItem("apuguard_token");
     setToken(null);
+    setCurrentUser(null);
     setProjects([]);
+    setAdminUsers([]);
+    setAdminProjects([]);
     setReport(null);
     setSelectedScanId(null);
     setMessage("");
     setError("");
     setCurrentView("home");
   };
+
+  const loadAdminUsers = async () => {
+  clearFeedback();
+  setLoading(true);
+
+  try {
+    const response = await api.get("/admin/users");
+    setAdminUsers(response.data);
+  } catch (exception) {
+    setError(getErrorMessage(exception));
+  } finally {
+    setLoading(false);
+  }
+};
+
+const loadAdminProjects = async () => {
+  clearFeedback();
+  setLoading(true);
+
+  try {
+    const response = await api.get("/admin/projects");
+    setAdminProjects(response.data);
+  } catch (exception) {
+    setError(getErrorMessage(exception));
+  } finally {
+    setLoading(false);
+  }
+};
+
+const openAdminPanel = async () => {
+  clearFeedback();
+  setCurrentView("admin");
+  setAdminSection("users");
+
+  await loadAdminUsers();
+};
+
+const changeUserStatus = async (user) => {
+  const action = user.is_active ? "desactivar" : "activar";
+
+  const confirmed = window.confirm(
+    `¿Deseas ${action} al usuario ${user.full_name}?`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  clearFeedback();
+  setLoading(true);
+
+  try {
+    await api.patch(`/admin/users/${user.id}/status`, {
+      is_active: !user.is_active,
+    });
+
+    setMessage(`Usuario ${action === "activar" ? "activado" : "desactivado"} correctamente.`);
+    await loadAdminUsers();
+  } catch (exception) {
+    setError(getErrorMessage(exception));
+  } finally {
+    setLoading(false);
+  }
+};
+
+const deleteAdminUser = async (user) => {
+  const confirmed = window.confirm(
+    `¿Eliminar permanentemente al usuario ${user.full_name}?\n\n` +
+      "Esta acción no se puede deshacer."
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  clearFeedback();
+  setLoading(true);
+
+  try {
+    await api.delete(`/admin/users/${user.id}`);
+    setMessage("Usuario eliminado correctamente.");
+    await loadAdminUsers();
+  } catch (exception) {
+    setError(getErrorMessage(exception));
+  } finally {
+    setLoading(false);
+  }
+};
+
+const deleteAdminProject = async (project) => {
+  const confirmed = window.confirm(
+    `¿Eliminar el proyecto "${project.name}"?\n\n` +
+      "También podrían eliminarse sus escaneos y reportes relacionados."
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  clearFeedback();
+  setLoading(true);
+
+  try {
+    await api.delete(`/admin/projects/${project.id}`);
+    setMessage("Proyecto eliminado correctamente.");
+    await loadAdminProjects();
+  } catch (exception) {
+    setError(getErrorMessage(exception));
+  } finally {
+    setLoading(false);
+  }
+};
 
   const loadProjects = async () => {
     clearFeedback();
@@ -507,7 +667,7 @@ function App() {
               <input
                 type="password"
                 required
-                minLength="8"
+                minLength="10"
                 value={registerForm.password}
                 onChange={(event) =>
                   setRegisterForm({
@@ -515,7 +675,7 @@ function App() {
                     password: event.target.value,
                   })
                 }
-                placeholder="Mínimo 8 caracteres"
+                placeholder="Mínimo 10 caracteres"
               />
             </label>
 
@@ -524,7 +684,7 @@ function App() {
               <input
                 type="password"
                 required
-                minLength="8"
+                minLength="10"
                 value={registerForm.confirm_password}
                 onChange={(event) =>
                   setRegisterForm({
@@ -648,6 +808,285 @@ function App() {
     );
   }
 
+  if (token && currentView === "admin") {
+    return (
+      <div className="app-shell">
+        <header className="topbar">
+          <div>
+            <h1>Administración</h1>
+            <p>Gestión centralizada de ApuGuard AI</p>
+          </div>
+
+          <div className="topbar-actions">
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                clearFeedback();
+                setCurrentView("dashboard");
+              }}
+            >
+              Volver al dashboard
+            </button>
+
+            <button
+              type="button"
+              className="secondary"
+              onClick={logout}
+            >
+              Cerrar sesión
+            </button>
+          </div>
+        </header>
+
+        <main className="dashboard">
+          {loading && (
+            <div className="loading-banner">
+              Procesando solicitud...
+            </div>
+          )}
+
+          {message && (
+            <div className="alert success">{message}</div>
+          )}
+
+          {error && <div className="alert error">{error}</div>}
+
+          <section className="hero-panel">
+            <div>
+              <span className="eyebrow">
+                ADMINISTRACIÓN DEL SISTEMA
+              </span>
+
+              <h2>Panel de control</h2>
+
+              <p>
+                Administra usuarios registrados y proyectos de análisis.
+              </p>
+            </div>
+
+            <div className="hero-stat">
+              <strong>
+                {adminUsers.length + adminProjects.length}
+              </strong>
+              <span>Registros administrados</span>
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="admin-navigation">
+              <button
+                type="button"
+                className={
+                  adminSection === "users" ? "" : "secondary"
+                }
+                onClick={async () => {
+                  setAdminSection("users");
+                  await loadAdminUsers();
+                }}
+              >
+                Usuarios
+              </button>
+
+              <button
+                type="button"
+                className={
+                  adminSection === "projects" ? "" : "secondary"
+                }
+                onClick={async () => {
+                  setAdminSection("projects");
+                  await loadAdminProjects();
+                }}
+              >
+                Proyectos
+              </button>
+            </div>
+          </section>
+
+          {adminSection === "users" && (
+            <section className="panel">
+              <div className="section-header">
+                <div>
+                  <h3>Usuarios registrados</h3>
+                  <p>
+                    Activa, desactiva o elimina cuentas del sistema.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={loadAdminUsers}
+                >
+                  Actualizar
+                </button>
+              </div>
+
+              {!adminUsers.length ? (
+                <div className="empty-state">
+                  No existen usuarios registrados.
+                </div>
+              ) : (
+                <div className="admin-table-wrapper">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Usuario</th>
+                        <th>Correo</th>
+                        <th>Rol</th>
+                        <th>Estado</th>
+                        <th>Registro</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {adminUsers.map((user) => (
+                        <tr key={user.id}>
+                          <td>{user.full_name}</td>
+                          <td>{user.email}</td>
+                          <td>{user.role}</td>
+
+                          <td>
+                            <span
+                              className={
+                                user.is_active
+                                  ? "status-badge active"
+                                  : "status-badge inactive"
+                              }
+                            >
+                              {user.is_active
+                                ? "Activo"
+                                : "Inactivo"}
+                            </span>
+                          </td>
+
+                          <td>
+                            {new Date(
+                              user.created_at
+                            ).toLocaleDateString()}
+                          </td>
+
+                          <td>
+                            <div className="table-actions">
+                              <button
+                                type="button"
+                                className="secondary"
+                                disabled={
+                                  loading ||
+                                  user.id === currentUser?.id
+                                }
+                                onClick={() =>
+                                  changeUserStatus(user)
+                                }
+                              >
+                                {user.is_active
+                                  ? "Desactivar"
+                                  : "Activar"}
+                              </button>
+
+                              <button
+                                type="button"
+                                className="danger-button"
+                                disabled={
+                                  loading ||
+                                  user.id === currentUser?.id ||
+                                  user.role === "ADMIN"
+                                }
+                                onClick={() =>
+                                  deleteAdminUser(user)
+                                }
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+
+          {adminSection === "projects" && (
+            <section className="panel">
+              <div className="section-header">
+                <div>
+                  <h3>Proyectos registrados</h3>
+                  <p>
+                    Consulta los objetivos creados por todos los
+                    analistas.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={loadAdminProjects}
+                >
+                  Actualizar
+                </button>
+              </div>
+
+              {!adminProjects.length ? (
+                <div className="empty-state">
+                  No existen proyectos registrados.
+                </div>
+              ) : (
+                <div className="admin-table-wrapper">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Proyecto</th>
+                        <th>Objetivo</th>
+                        <th>Propietario</th>
+                        <th>Correo</th>
+                        <th>Registro</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {adminProjects.map((project) => (
+                        <tr key={project.id}>
+                          <td>{project.name}</td>
+                          <td>{project.target_url}</td>
+                          <td>{project.owner_name}</td>
+                          <td>{project.owner_email}</td>
+
+                          <td>
+                            {new Date(
+                              project.created_at
+                            ).toLocaleDateString()}
+                          </td>
+
+                          <td>
+                            <button
+                              type="button"
+                              className="danger-button"
+                              disabled={loading}
+                              onClick={() =>
+                                deleteAdminProject(project)
+                              }
+                            >
+                              Eliminar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -656,9 +1095,25 @@ function App() {
           <p>Centro de análisis de seguridad</p>
         </div>
 
-        <button className="secondary" onClick={logout}>
-          Cerrar sesión
-        </button>
+        <div className="topbar-actions">
+          {currentUser?.role === "ADMIN" && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={openAdminPanel}
+            >
+              Panel administrativo
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="secondary"
+            onClick={logout}
+          >
+            Cerrar sesión
+          </button>
+        </div>
       </header>
 
       <main className="dashboard">

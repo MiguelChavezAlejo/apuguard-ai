@@ -12,6 +12,8 @@ from app.models import Project, Scan, User, Vulnerability  # noqa: F401
 from app.api.routes.scans import router as scans_router
 from app.api.routes.reports import router as reports_router
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.routes.admin import router as admin_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,3 +48,4 @@ app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(scans_router)
 app.include_router(reports_router)
+app.include_router(admin_router)

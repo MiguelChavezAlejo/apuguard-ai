@@ -43,7 +43,6 @@ def create_user(
 
     return user
 
-
 def save_user(
     db: Session,
     user: User,

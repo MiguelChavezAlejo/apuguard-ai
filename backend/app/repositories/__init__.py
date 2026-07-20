@@ -6,6 +6,8 @@ from app.repositories.user_repository import (
 )
 from app.repositories.project_repository import ProjectRepository
 from app.repositories.scan_repository import ScanRepository
+from app.repositories.admin_repository import AdminRepository
+
 __all__ = [
     "create_user",
     "get_user_by_email",

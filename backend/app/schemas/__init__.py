@@ -12,6 +12,11 @@ from app.schemas.scan import (
     ScanStartRequest,
     VulnerabilityResponse,
 )
+from app.schemas.admin import (
+    AdminProjectResponse,
+    AdminUserResponse,
+    AdminUserStatusUpdate,
+)
 
 __all__ = [
     "TokenPayload",
