@@ -5,7 +5,11 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import HTTPException, status
 
+import ipaddress
+import socket
+
 from app.core.config import settings
+from urllib.parse import urlparse
 
 
 class ZapService:
@@ -60,8 +64,31 @@ class ZapService:
                 detail="OWASP ZAP devolvió una respuesta inválida.",
             ) from exc
 
-    @staticmethod
-    def validate_target_url(target_url: str) -> None:
+    DEMO_TARGETS = {
+        ("juice-shop", 3000),
+        ("localhost", 3000),
+        ("127.0.0.1", 3000),
+    }
+
+    @classmethod
+    def is_demo_target(cls, target_url: str) -> bool:
+        parsed = urlparse(target_url)
+
+        hostname = (parsed.hostname or "").lower()
+        port = parsed.port
+
+        if port is None:
+            port = 443 if parsed.scheme == "https" else 80
+
+        return (hostname, port) in cls.DEMO_TARGETS
+
+    @classmethod
+    def validate_target_url(
+        cls,
+        target_url: str,
+        *,
+        authorization_confirmed: bool = False,
+    ) -> None:
         parsed = urlparse(target_url)
 
         if parsed.scheme not in {"http", "https"}:
@@ -70,26 +97,84 @@ class ZapService:
                 detail="La URL debe utilizar HTTP o HTTPS.",
             )
 
-        if not parsed.hostname:
+        hostname = parsed.hostname
+
+        if not hostname:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="La URL objetivo no contiene un host válido.",
             )
 
-        allowed_hosts = {
-            "juice-shop",
-            "localhost",
-            "127.0.0.1",
-        }
+        if parsed.username or parsed.password:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "La URL no debe contener credenciales "
+                    "incrustadas."
+                ),
+            )
 
-        if parsed.hostname not in allowed_hosts:
+        if cls.is_demo_target(target_url):
+            return
+
+        if not authorization_confirmed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
-                    "Por seguridad, la demostración solo permite analizar "
-                    "el laboratorio OWASP Juice Shop local."
+                    "Debe confirmar que cuenta con autorización "
+                    "expresa del propietario para analizar este objetivo."
                 ),
             )
+
+        external_port = parsed.port
+
+        if external_port is None:
+            external_port = 443 if parsed.scheme == "https" else 80
+
+        if external_port not in {80, 443}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Los objetivos externos solo pueden utilizar "
+                    "los puertos HTTP 80 o HTTPS 443."
+                ),
+            )
+
+        try:
+            resolved_addresses = socket.getaddrinfo(
+                hostname,
+                external_port,
+                type=socket.SOCK_STREAM,
+            )
+        except socket.gaierror as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No fue posible resolver el dominio objetivo.",
+            ) from exc
+
+        for address_info in resolved_addresses:
+            raw_ip = address_info[4][0]
+
+            try:
+                ip_address = ipaddress.ip_address(raw_ip)
+            except ValueError:
+                continue
+
+            if (
+                ip_address.is_private
+                or ip_address.is_loopback
+                or ip_address.is_link_local
+                or ip_address.is_multicast
+                or ip_address.is_reserved
+                or ip_address.is_unspecified
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        "Por seguridad, no se permite analizar "
+                        "direcciones internas, reservadas o locales."
+                    ),
+                )
 
     def check_health(self) -> str:
         data = self._get("/JSON/core/view/version/")

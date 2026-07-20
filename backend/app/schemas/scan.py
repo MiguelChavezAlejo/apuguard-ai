@@ -1,10 +1,18 @@
 from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict
-
 from app.models.scan import ScanStatus
 from app.models.vulnerability import SeverityLevel
+from pydantic import BaseModel, ConfigDict, Field
 
+
+class ScanStartRequest(BaseModel):
+    authorization_confirmed: bool = Field(
+        default=False,
+        description=(
+            "Confirma que el usuario cuenta con autorización expresa "
+            "para evaluar el objetivo indicado."
+        ),
+    )
 
 class VulnerabilityResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

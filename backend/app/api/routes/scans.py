@@ -7,7 +7,7 @@ from app.models.user import User
 from app.schemas.scan import ScanResponse
 from app.security.dependencies import get_current_user
 from app.services.scan_service import ScanService
-
+from app.schemas.scan import ScanResponse, ScanStartRequest
 
 router = APIRouter(
     prefix="/scans",
@@ -22,13 +22,21 @@ router = APIRouter(
 )
 def start_project_scan(
     project_id: int,
+    request_data: ScanStartRequest | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Scan:
+    authorization_confirmed = (
+        request_data.authorization_confirmed
+        if request_data is not None
+        else False
+    )
+
     return ScanService.start_scan(
         db,
         project_id=project_id,
         owner_id=current_user.id,
+        authorization_confirmed=authorization_confirmed,
     )
 
 

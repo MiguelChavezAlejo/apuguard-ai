@@ -7,7 +7,11 @@ from app.schemas.report import (
     RiskDistribution,
     SecurityReportResponse,
 )
-
+from app.schemas.scan import (
+    ScanResponse,
+    ScanStartRequest,
+    VulnerabilityResponse,
+)
 
 __all__ = [
     "TokenPayload",

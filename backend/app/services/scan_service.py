@@ -123,6 +123,7 @@ class ScanService:
         *,
         project_id: int,
         owner_id: int,
+        authorization_confirmed: bool = False,
     ) -> Scan:
         project = ProjectService.get_project(
             db,
@@ -145,7 +146,10 @@ class ScanService:
             target_url = project.target_url
 
             # Por ahora ejecutamos Spider + análisis pasivo.
-            zap_service.validate_target_url(target_url)
+            zap_service.validate_target_url(
+                target_url,
+                authorization_confirmed=authorization_confirmed,
+            )
             zap_service.check_health()
             zap_service.access_url(target_url)
 
