@@ -21,6 +21,18 @@ class Settings(BaseSettings):
     max_login_attempts: int = 5
     login_lock_minutes: int = 15
 
+    password_reset_expire_minutes: int = 15
+
+    email_mode: str = "console"
+
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_name: str = "ApuGuard AI"
+
+    frontend_url: str = "http://localhost:5173"
+
     zap_base_url: str = "http://zap:8080"
     zap_api_key: str = ""
     zap_spider_timeout_seconds: int = 120

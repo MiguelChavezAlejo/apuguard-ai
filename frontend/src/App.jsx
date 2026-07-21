@@ -43,12 +43,46 @@ function App() {
   const [adminProjects, setAdminProjects] = useState([]);
   const [adminSection, setAdminSection] = useState("users");
 
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
+
+  const [resetPasswordForm, setResetPasswordForm] = useState({
+    token: "",
+    new_password: "",
+    confirm_password: "",
+  });
+  
+  const [profileForm, setProfileForm] = useState({
+    full_name: "",
+    current_password: "",
+    new_password: "",
+    confirm_password: "",
+  });
+
   useEffect(() => {
     if (token) {
       loadCurrentUser();
       loadProjects();
     }
   }, [token]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const resetToken = params.get("reset_token");
+
+    if (resetToken) {
+      setResetPasswordForm({
+        token: resetToken,
+        new_password: "",
+        confirm_password: "",
+      });
+
+      setCurrentView("reset-password");
+    }
+  }, []);  
 
   const clearFeedback = () => {
     setMessage("");
@@ -89,6 +123,246 @@ function App() {
       setCurrentView("login");
 
       throw exception;
+    }
+  };
+
+  const openProfile = () => {
+    clearFeedback();
+
+    setProfileForm({
+      full_name: currentUser?.full_name || "",
+      current_password: "",
+      new_password: "",
+      confirm_password: "",
+    });
+
+    setProfileOpen(true);
+  };
+
+  const closeProfile = () => {
+    if (loading) {
+      return;
+    }
+
+    setProfileOpen(false);
+
+    setProfileForm({
+      full_name: "",
+      current_password: "",
+      new_password: "",
+      confirm_password: "",
+    });
+
+    clearFeedback();
+  };
+
+  const updateProfileName = async (event) => {
+    event.preventDefault();
+    clearFeedback();
+
+    const normalizedName = profileForm.full_name.trim();
+
+    if (normalizedName.length < 3) {
+      setError("El nombre debe tener al menos 3 caracteres.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await api.patch("/auth/me", {
+        full_name: normalizedName,
+      });
+
+      setCurrentUser(response.data);
+
+      setProfileForm((current) => ({
+        ...current,
+        full_name: response.data.full_name,
+      }));
+
+      setMessage("Nombre actualizado correctamente.");
+    } catch (exception) {
+      setError(getErrorMessage(exception));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateProfilePassword = async (event) => {
+    event.preventDefault();
+    clearFeedback();
+
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{10,72}$/;
+
+    if (!profileForm.current_password) {
+      setError("Ingresa tu contraseña actual.");
+      return;
+    }
+
+    if (!passwordRegex.test(profileForm.new_password)) {
+      setError(
+        "La nueva contraseña debe tener entre 10 y 72 caracteres, " +
+          "una mayúscula, una minúscula, un número y un símbolo."
+      );
+      return;
+    }
+
+    if (
+      profileForm.new_password !==
+      profileForm.confirm_password
+    ) {
+      setError("La nueva contraseña y su confirmación no coinciden.");
+      return;
+    }
+
+    if (
+      profileForm.current_password ===
+      profileForm.new_password
+    ) {
+      setError(
+        "La nueva contraseña debe ser diferente de la contraseña actual."
+      );
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await api.patch("/auth/change-password", {
+        current_password: profileForm.current_password,
+        new_password: profileForm.new_password,
+      });
+
+      setMessage(
+        "Contraseña actualizada correctamente. Debes iniciar sesión nuevamente."
+      );
+
+      setTimeout(() => {
+        localStorage.removeItem("apuguard_token");
+        setToken(null);
+        setCurrentUser(null);
+        setProjects([]);
+        setAdminUsers([]);
+        setAdminProjects([]);
+        setReport(null);
+        setSelectedScanId(null);
+        setProfileOpen(false);
+        setCurrentView("login");
+        setMessage(
+          "Contraseña actualizada. Inicia sesión con tu nueva contraseña."
+        );
+        setError("");
+      }, 1500);
+    } catch (exception) {
+      setError(getErrorMessage(exception));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openForgotPassword = () => {
+    clearFeedback();
+    setForgotPasswordEmail(loginForm.email || "");
+    setForgotPasswordOpen(true);
+  };
+
+  const closeForgotPassword = () => {
+    if (loading) {
+      return;
+    }
+
+    setForgotPasswordOpen(false);
+    setForgotPasswordEmail("");
+    clearFeedback();
+  };
+
+  const requestPasswordReset = async (event) => {
+    event.preventDefault();
+    clearFeedback();
+
+    if (!forgotPasswordEmail.trim()) {
+      setError("Ingresa tu correo electrónico.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await api.post("/auth/forgot-password", {
+        email: forgotPasswordEmail.trim(),
+      });
+
+      setMessage(response.data.message);
+
+      setForgotPasswordEmail("");
+    } catch (exception) {
+      setError(getErrorMessage(exception));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForgottenPassword = async (event) => {
+    event.preventDefault();
+    clearFeedback();
+
+    const passwordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{10,72}$/;
+
+    if (!resetPasswordForm.token) {
+      setError("El token de recuperación no es válido.");
+      return;
+    }
+
+    if (!passwordRegex.test(resetPasswordForm.new_password)) {
+      setError(
+        "La contraseña debe tener entre 10 y 72 caracteres, " +
+          "una mayúscula, una minúscula, un número y un símbolo."
+      );
+      return;
+    }
+
+    if (
+      resetPasswordForm.new_password !==
+      resetPasswordForm.confirm_password
+    ) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await api.post("/auth/reset-password", {
+        token: resetPasswordForm.token,
+        new_password: resetPasswordForm.new_password,
+      });
+
+      window.history.replaceState(
+        {},
+        document.title,
+        window.location.pathname
+      );
+
+      setResetPasswordForm({
+        token: "",
+        new_password: "",
+        confirm_password: "",
+      });
+
+      setLoginForm({
+        email: "",
+        password: "",
+      });
+
+      setCurrentView("login");
+      setMessage(response.data.message);
+    } catch (exception) {
+      setError(getErrorMessage(exception));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -185,6 +459,7 @@ function App() {
     setAdminProjects([]);
     setReport(null);
     setSelectedScanId(null);
+    setProfileOpen(false);
     setMessage("");
     setError("");
     setCurrentView("home");
@@ -726,6 +1001,104 @@ const deleteAdminProject = async (project) => {
     );
   }
 
+  if (!token && currentView === "reset-password") {
+    return (
+      <main className="login-page">
+        <section className="login-card reset-password-card">
+          <div className="brand-mark">AG</div>
+
+          <h1>Nueva contraseña</h1>
+
+          <p className="subtitle">
+            Crea una contraseña segura para recuperar tu cuenta.
+          </p>
+
+          <form onSubmit={resetForgottenPassword}>
+            <label>
+              Nueva contraseña
+              <input
+                type="password"
+                required
+                minLength="10"
+                maxLength="72"
+                autoComplete="new-password"
+                value={resetPasswordForm.new_password}
+                onChange={(event) =>
+                  setResetPasswordForm((current) => ({
+                    ...current,
+                    new_password: event.target.value,
+                  }))
+                }
+                placeholder="Nueva contraseña segura"
+              />
+            </label>
+
+            <label>
+              Confirmar contraseña
+              <input
+                type="password"
+                required
+                minLength="10"
+                maxLength="72"
+                autoComplete="new-password"
+                value={resetPasswordForm.confirm_password}
+                onChange={(event) =>
+                  setResetPasswordForm((current) => ({
+                    ...current,
+                    confirm_password: event.target.value,
+                  }))
+                }
+                placeholder="Repite la nueva contraseña"
+              />
+            </label>
+
+            <div className="password-requirements">
+              <strong>Requisitos</strong>
+              <span>Entre 10 y 72 caracteres</span>
+              <span>Una mayúscula y una minúscula</span>
+              <span>Un número y un símbolo</span>
+            </div>
+
+            {message && (
+              <div className="alert success">{message}</div>
+            )}
+
+            {error && (
+              <div className="alert error">{error}</div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+            >
+              {loading
+                ? "Actualizando..."
+                : "Guardar nueva contraseña"}
+            </button>
+          </form>
+
+          <button
+            type="button"
+            className="login-switch-button"
+            disabled={loading}
+            onClick={() => {
+              window.history.replaceState(
+                {},
+                document.title,
+                window.location.pathname
+              );
+
+              clearFeedback();
+              setCurrentView("login");
+            }}
+          >
+            Volver al inicio de sesión
+          </button>
+        </section>
+      </main>
+    );
+  }
+
   if (!token && currentView === "login") {
     return (
       <main className="login-page">
@@ -788,7 +1161,8 @@ const deleteAdminProject = async (project) => {
             <button disabled={loading} type="submit">
               {loading ? "Ingresando..." : "Iniciar sesión"}
             </button>
-             <button
+
+            <button
               type="button"
               className="login-switch-button"
               onClick={() => {
@@ -798,12 +1172,114 @@ const deleteAdminProject = async (project) => {
             >
               ¿No tienes cuenta? Regístrate
             </button>
+
+            <button
+              type="button"
+              className="forgot-password-link"
+              onClick={openForgotPassword}
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
           </form>
 
           <p className="security-note">
             Acceso protegido mediante JWT y BCrypt
           </p>
         </section>
+        
+        {forgotPasswordOpen && (
+          <div
+            className="profile-modal-overlay"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                closeForgotPassword();
+              }
+            }}
+          >
+            <section
+              className="forgot-password-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="forgot-password-title"
+            >
+              <header className="profile-modal-header">
+                <div>
+                  <span className="eyebrow">
+                    RECUPERACIÓN DE CUENTA
+                  </span>
+
+                  <h2 id="forgot-password-title">
+                    Recuperar contraseña
+                  </h2>
+
+                  <p>
+                    Ingresa el correo asociado a tu cuenta.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  className="profile-modal-close"
+                  disabled={loading}
+                  onClick={closeForgotPassword}
+                >
+                  ×
+                </button>
+              </header>
+
+              <div className="profile-modal-body">
+                {message && (
+                  <div className="alert success">{message}</div>
+                )}
+
+                {error && (
+                  <div className="alert error">{error}</div>
+                )}
+
+                <form onSubmit={requestPasswordReset}>
+                  <label>
+                    Correo electrónico
+                    <input
+                      type="email"
+                      required
+                      value={forgotPasswordEmail}
+                      onChange={(event) =>
+                        setForgotPasswordEmail(event.target.value)
+                      }
+                      placeholder="usuario@correo.com"
+                    />
+                  </label>
+
+                  <p className="forgot-password-help">
+                    Si el correo está registrado, se generará un enlace
+                    seguro con una vigencia de 15 minutos.
+                  </p>
+
+                  <div className="profile-form-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={loading}
+                      onClick={closeForgotPassword}
+                    >
+                      Cancelar
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                    >
+                      {loading
+                        ? "Enviando..."
+                        : "Enviar instrucciones"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </section>
+          </div>
+        )}
+
       </main>
     );
   }
@@ -1108,6 +1584,18 @@ const deleteAdminProject = async (project) => {
 
           <button
             type="button"
+            className="secondary profile-button"
+            onClick={openProfile}
+          >
+            <span className="profile-button-avatar">
+              {currentUser?.full_name?.charAt(0).toUpperCase() || "U"}
+            </span>
+
+            Mi perfil
+          </button>
+
+          <button
+            type="button"
             className="secondary"
             onClick={logout}
           >
@@ -1352,6 +1840,233 @@ const deleteAdminProject = async (project) => {
           </section>
         )}
       </main>
+      
+      {profileOpen && (
+        <div
+          className="profile-modal-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeProfile();
+            }
+          }}
+        >
+          <section
+            className="profile-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-modal-title"
+          >
+            <header className="profile-modal-header">
+              <div className="profile-modal-identity">
+                <div className="profile-modal-avatar">
+                  {currentUser?.full_name
+                    ?.charAt(0)
+                    .toUpperCase() || "U"}
+                </div>
+
+                <div>
+                  <span className="eyebrow">
+                    CONFIGURACIÓN DE CUENTA
+                  </span>
+
+                  <h2 id="profile-modal-title">
+                    Mi perfil
+                  </h2>
+
+                  <p>
+                    Administra tu información personal y seguridad.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="profile-modal-close"
+                aria-label="Cerrar perfil"
+                disabled={loading}
+                onClick={closeProfile}
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="profile-modal-body">
+              {message && (
+                <div className="alert success">{message}</div>
+              )}
+
+              {error && (
+                <div className="alert error">{error}</div>
+              )}
+
+              <section className="profile-section">
+                <div className="profile-section-title">
+                  <div>
+                    <h3>Información personal</h3>
+
+                    <p>
+                      Actualiza el nombre que se muestra en tu cuenta.
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={updateProfileName}>
+                  <label>
+                    Nombre completo
+                    <input
+                      type="text"
+                      required
+                      minLength="3"
+                      maxLength="120"
+                      value={profileForm.full_name}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          full_name: event.target.value,
+                        }))
+                      }
+                      placeholder="Ingrese su nombre completo"
+                    />
+                  </label>
+
+                  <div className="profile-readonly-grid">
+                    <div className="profile-readonly-field">
+                      <span>Correo electrónico</span>
+                      <strong>{currentUser?.email}</strong>
+                      <small>No puede modificarse.</small>
+                    </div>
+
+                    <div className="profile-readonly-field">
+                      <span>Rol de usuario</span>
+                      <strong>{currentUser?.role}</strong>
+                      <small>Asignado por el sistema.</small>
+                    </div>
+                  </div>
+
+                  <div className="profile-form-actions">
+                    <button
+                      type="submit"
+                      disabled={loading}
+                    >
+                      {loading
+                        ? "Guardando..."
+                        : "Guardar nombre"}
+                    </button>
+                  </div>
+                </form>
+              </section>
+
+              <section className="profile-section security-section">
+                <div className="profile-section-title">
+                  <div>
+                    <h3>Cambiar contraseña</h3>
+
+                    <p>
+                      Confirma tu contraseña actual antes de establecer
+                      una nueva.
+                    </p>
+                  </div>
+
+                  <span className="security-status">
+                    BCrypt
+                  </span>
+                </div>
+
+                <form onSubmit={updateProfilePassword}>
+                  <label>
+                    Contraseña actual
+                    <input
+                      type="password"
+                      required
+                      autoComplete="current-password"
+                      value={profileForm.current_password}
+                      onChange={(event) =>
+                        setProfileForm((current) => ({
+                          ...current,
+                          current_password: event.target.value,
+                        }))
+                      }
+                      placeholder="Ingresa tu contraseña actual"
+                    />
+                  </label>
+
+                  <div className="profile-password-grid">
+                    <label>
+                      Nueva contraseña
+                      <input
+                        type="password"
+                        required
+                        minLength="10"
+                        maxLength="72"
+                        autoComplete="new-password"
+                        value={profileForm.new_password}
+                        onChange={(event) =>
+                          setProfileForm((current) => ({
+                            ...current,
+                            new_password: event.target.value,
+                          }))
+                        }
+                        placeholder="Nueva contraseña segura"
+                      />
+                    </label>
+
+                    <label>
+                      Confirmar nueva contraseña
+                      <input
+                        type="password"
+                        required
+                        minLength="10"
+                        maxLength="72"
+                        autoComplete="new-password"
+                        value={profileForm.confirm_password}
+                        onChange={(event) =>
+                          setProfileForm((current) => ({
+                            ...current,
+                            confirm_password:
+                              event.target.value,
+                          }))
+                        }
+                        placeholder="Repite la nueva contraseña"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="password-requirements">
+                    <strong>Requisitos de seguridad</strong>
+
+                    <span>Entre 10 y 72 caracteres</span>
+                    <span>Una letra mayúscula y una minúscula</span>
+                    <span>Un número y un símbolo</span>
+                  </div>
+
+                  <div className="profile-form-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={loading}
+                      onClick={closeProfile}
+                    >
+                      Cancelar
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                    >
+                      {loading
+                        ? "Actualizando..."
+                        : "Actualizar contraseña"}
+                    </button>
+                  </div>
+                </form>
+              </section>
+            </div>
+          </section>
+        </div>
+      )}
+
+
     </div>
   );
 }
